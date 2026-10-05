@@ -4,84 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Control QR 3B</title>
-
   <script src="https://unpkg.com/html5-qrcode"></script>
-
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 18px;
-      background: #f4f6f8;
-    }
-
-    .contenedor {
-      max-width: 520px;
-      margin: auto;
-      background: white;
-      padding: 20px;
-      border-radius: 16px;
-    }
-
-    h1 {
-      text-align: center;
-      margin-top: 0;
-    }
-
-    select, input, button {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 14px;
-      margin: 7px 0;
-      font-size: 17px;
-      border-radius: 10px;
-    }
-
-    select, input {
-      border: 1px solid #bbb;
-    }
-
-    button {
-      border: none;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    #iniciar {
-      background: #1a73e8;
-      color: white;
-    }
-
-    #finalizar {
-      background: #d93025;
-      color: white;
-      display: none;
-    }
-
-    #reader {
-      margin-top: 15px;
-    }
-
-    #estado {
-      text-align: center;
-      font-size: 20px;
-      font-weight: bold;
-      min-height: 30px;
-      margin: 15px 0;
-    }
-
-    #contador {
-      text-align: center;
-      font-size: 18px;
-      margin: 10px;
-    }
+    body{font-family:Arial,sans-serif;margin:0;padding:18px;background:#f4f6f8}
+    .contenedor{max-width:520px;margin:auto;background:white;padding:20px;border-radius:16px}
+    h1{text-align:center;margin-top:0}
+    select,input,button{width:100%;box-sizing:border-box;padding:14px;margin:7px 0;font-size:17px;border-radius:10px}
+    select,input{border:1px solid #bbb}
+    button{border:none;font-weight:bold;cursor:pointer}
+    #iniciar{background:#1a73e8;color:white}
+    #deshacer{background:#f9ab00;color:#202124;display:none}
+    #finalizar{background:#d93025;color:white;display:none}
+    #reader{margin-top:15px}
+    #estado{text-align:center;font-size:20px;font-weight:bold;min-height:30px;margin:15px 0}
+    #contador{text-align:center;font-size:18px;line-height:1.6;margin:10px}
+    .ayuda{text-align:center;font-size:14px;color:#5f6368;margin:8px 0 14px}
   </style>
 </head>
-
 <body>
-
 <div class="contenedor">
-
   <h1>📱 Control QR 3B</h1>
 
   <select id="materia">
@@ -98,151 +39,147 @@
     <option>Tutoría (Socioemocional)</option>
   </select>
 
-  <input
-    id="actividad"
-    type="text"
-    placeholder="Ejemplo: Actividad 1">
+  <input id="actividad" type="text" placeholder="Ejemplo: Actividad 1">
 
-  <button id="iniciar" onclick="iniciarRevision()">
-    INICIAR REVISIÓN
-  </button>
+  <button id="iniciar" onclick="iniciarRevision()">INICIAR REVISIÓN</button>
 
-  <div id="contador">Entregaron: 0</div>
-
+  <div id="contador">Realizaron: 33 | No realizaron: 0</div>
+  <div class="ayuda">Escanea únicamente a los alumnos que NO realizaron la actividad.</div>
   <div id="estado"></div>
-
   <div id="reader"></div>
 
-  <button id="finalizar" onclick="finalizarRevision()">
-    FINALIZAR
-  </button>
-
+  <button id="deshacer" onclick="deshacerUltimo()">↩️ DESHACER ÚLTIMO ESCANEO</button>
+  <button id="finalizar" onclick="finalizarRevision()">FINALIZAR</button>
 </div>
 
 <script>
-
 const URL_APPS_SCRIPT = 'https://script.google.com/macros/s/AKfycbxHWbTpCB8qg9mNOMI0rmif8D2OxiykphA63t79haJbUZxTe53T-d7uRTn7aAsEqfbx/exec';
-  let lector;
+const TOTAL_ALUMNOS = 33;
+
+let lector;
 let escaneados = new Set();
+let ordenEscaneos = [];
 let activo = false;
 let bloqueado = false;
 
-function iniciarRevision() {
+function actualizarContador() {
+  const noRealizaron = escaneados.size;
+  const realizaron = TOTAL_ALUMNOS - noRealizaron;
+  document.getElementById('contador').textContent =
+    'Realizaron: ' + realizaron + ' | No realizaron: ' + noRealizaron;
+  document.getElementById('deshacer').style.display =
+    activo && ordenEscaneos.length ? 'block' : 'none';
+}
 
+function iniciarRevision() {
   const materia = document.getElementById('materia').value;
   const actividad = document.getElementById('actividad').value.trim();
 
-  if (!materia) {
-    alert('Selecciona una materia.');
-    return;
-  }
-
-  if (!actividad) {
-    alert('Escribe el nombre de la actividad.');
-    return;
-  }
+  if (!materia) { alert('Selecciona una materia.'); return; }
+  if (!actividad) { alert('Escribe el nombre de la actividad.'); return; }
 
   escaneados.clear();
+  ordenEscaneos = [];
   activo = true;
   bloqueado = false;
+  actualizarContador();
 
-  document.getElementById('contador').textContent = 'Entregaron: 0';
   document.getElementById('estado').textContent = 'Preparando cámara...';
-
   document.getElementById('materia').disabled = true;
   document.getElementById('actividad').disabled = true;
   document.getElementById('iniciar').style.display = 'none';
   document.getElementById('finalizar').style.display = 'block';
 
   lector = new Html5Qrcode('reader');
-
   lector.start(
     { facingMode: "environment" },
-    {
-      fps: 10,
-      qrbox: { width: 250, height: 250 }
-    },
+    { fps: 10, qrbox: { width: 250, height: 250 } },
     codigoLeido
-  )
-  .then(function() {
+  ).then(function() {
     document.getElementById('estado').textContent =
-      'Apunta la cámara al QR';
-  })
-  .catch(function(error) {
+      'Escanea únicamente a quien NO realizó';
+  }).catch(function(error) {
     document.getElementById('estado').textContent =
       'No se pudo abrir la cámara: ' + error;
-
     activo = false;
     document.getElementById('finalizar').style.display = 'none';
     document.getElementById('iniciar').style.display = 'block';
     document.getElementById('materia').disabled = false;
     document.getElementById('actividad').disabled = false;
+    actualizarContador();
   });
 }
 
 function codigoLeido(texto) {
-
   if (!activo || bloqueado) return;
 
   const codigo = String(texto).trim().toUpperCase();
-
   if (!/^3B-\d{2}$/.test(codigo)) return;
+
+  const numero = Number(codigo.slice(3));
+  if (numero < 1 || numero > TOTAL_ALUMNOS) return;
   if (escaneados.has(codigo)) return;
 
   bloqueado = true;
   escaneados.add(codigo);
+  ordenEscaneos.push(codigo);
 
   document.getElementById('estado').textContent =
-    '✅ ' + codigo + ' — ENTREGÓ';
+    '❌ ' + codigo + ' — NO REALIZÓ';
+  actualizarContador();
 
-  document.getElementById('contador').textContent =
-    'Entregaron: ' + escaneados.size;
-
-  if (navigator.vibrate) {
-    navigator.vibrate(100);
-  }
+  if (navigator.vibrate) navigator.vibrate(100);
 
   setTimeout(function() {
     if (activo) {
       document.getElementById('estado').textContent =
-        'Apunta al siguiente QR';
+        'Escanea al siguiente que NO realizó';
     }
     bloqueado = false;
   }, 700);
 }
 
-async function finalizarRevision() {
+function deshacerUltimo() {
+  if (!activo || !ordenEscaneos.length) return;
 
+  const codigo = ordenEscaneos.pop();
+  escaneados.delete(codigo);
+  bloqueado = false;
+  document.getElementById('estado').textContent =
+    '↩️ ' + codigo + ' corregido: vuelve a contar como REALIZÓ';
+  actualizarContador();
+}
+
+async function finalizarRevision() {
   if (!activo) return;
+
+  const noRealizaron = escaneados.size;
+  const realizaron = TOTAL_ALUMNOS - noRealizaron;
 
   const confirmar = confirm(
     '¿Finalizar la revisión?\n\n' +
-    'Entregaron: ' + escaneados.size +
-    '\nLos alumnos no escaneados quedarán como NO ENTREGÓ.'
+    'Realizaron: ' + realizaron +
+    '\nNo realizaron: ' + noRealizaron +
+    '\nTotal: ' + TOTAL_ALUMNOS +
+    '\n\nLos QR escaneados quedarán como NO ENTREGÓ en el registro.'
   );
-
   if (!confirmar) return;
 
   activo = false;
-
   const materia = document.getElementById('materia').value;
   const actividad = document.getElementById('actividad').value.trim();
-
-  document.getElementById('estado').textContent =
-    'Guardando resultados...';
+  document.getElementById('estado').textContent = 'Guardando resultados...';
+  document.getElementById('deshacer').style.display = 'none';
 
   try {
-
     if (lector) {
-      await lector.stop();
+      try { await lector.stop(); } catch (e) {}
     }
 
     await fetch(URL_APPS_SCRIPT, {
       method: 'POST',
       mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
       body: JSON.stringify({
         accion: 'finalizar',
         materia: materia,
@@ -253,25 +190,22 @@ async function finalizarRevision() {
 
     document.getElementById('estado').innerHTML =
       '✅ ACTIVIDAD ENVIADA<br><br>' +
-      'Entregaron: ' + escaneados.size +
-      '<br>No entregaron: ' + (32 - escaneados.size);
+      'Realizaron: ' + realizaron +
+      '<br>No realizaron: ' + noRealizaron +
+      '<br>Total: ' + TOTAL_ALUMNOS;
 
     document.getElementById('finalizar').style.display = 'none';
     document.getElementById('iniciar').style.display = 'block';
     document.getElementById('materia').disabled = false;
     document.getElementById('actividad').disabled = false;
-
   } catch (error) {
-
-    document.getElementById('estado').textContent =
-      'Error al guardar. Intenta nuevamente.';
-
     activo = true;
+    document.getElementById('estado').textContent =
+      'No se pudo enviar. Revisa la conexión e inténtalo de nuevo.';
     document.getElementById('finalizar').style.display = 'block';
+    actualizarContador();
   }
 }
-
 </script>
-
 </body>
 </html>
